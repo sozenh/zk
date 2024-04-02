@@ -11,11 +11,12 @@ import (
 // the call to Init.  It could be easily extended to re-query DNS
 // periodically or if there is trouble connecting.
 type DNSHostProvider struct {
-	mu         sync.Mutex // Protects everything, so we can add asynchronous updates later.
-	servers    []string
-	curr       int
-	last       int
-	lookupHost func(string) ([]string, error) // Override of net.LookupHost, for testing.
+	mu          sync.Mutex // Protects everything, so we can add asynchronous updates later.
+	initServers []string   // init connect servers
+	servers     []string
+	curr        int
+	last        int
+	lookupHost  func(string) ([]string, error) // Override of net.LookupHost, for testing.
 }
 
 // Init is called first, with the servers specified in the connection
@@ -24,7 +25,12 @@ type DNSHostProvider struct {
 func (hp *DNSHostProvider) Init(servers []string) error {
 	hp.mu.Lock()
 	defer hp.mu.Unlock()
+	hp.initServers = make([]string, len(servers))
+	copy(hp.initServers, servers)
+	return hp.resolveServers(servers)
+}
 
+func (hp *DNSHostProvider) resolveServers(servers []string) error {
 	lookupHost := hp.lookupHost
 	if lookupHost == nil {
 		lookupHost = net.LookupHost
@@ -74,10 +80,16 @@ func (hp *DNSHostProvider) Next() (server string, retryStart bool) {
 	defer hp.mu.Unlock()
 	hp.curr = (hp.curr + 1) % len(hp.servers)
 	retryStart = hp.curr == hp.last
+	if retryStart {
+		if err := hp.resolveServers(hp.initServers); err != nil {
+			return "", false
+		}
+		hp.curr = (hp.curr + 1) % len(hp.servers)
+	}
 	if hp.last == -1 {
 		hp.last = 0
 	}
-	return hp.servers[hp.curr], retryStart
+	return hp.servers[hp.curr], false
 }
 
 // Connected notifies the HostProvider of a successful connection.
@@ -85,4 +97,12 @@ func (hp *DNSHostProvider) Connected() {
 	hp.mu.Lock()
 	defer hp.mu.Unlock()
 	hp.last = hp.curr
+}
+
+func (hp *DNSHostProvider) GetServer() []string {
+	hp.mu.Lock()
+	defer hp.mu.Unlock()
+	servers := make([]string, len(hp.servers))
+	copy(servers, hp.servers)
+	return servers
 }

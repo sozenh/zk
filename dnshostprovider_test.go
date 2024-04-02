@@ -89,6 +89,10 @@ func (lhpf *localHostPortsFacade) Next() (string, bool) {
 	return localMapping, retryStart
 }
 
+func (lhpf *localHostPortsFacade) GetServer() []string {
+	return lhpf.inner.GetServer()
+}
+
 var _ HostProvider = &localHostPortsFacade{}
 
 // TestDNSHostProviderReconnect tests that the zk.Conn correctly

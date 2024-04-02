@@ -163,6 +163,8 @@ type HostProvider interface {
 	Next() (server string, retryStart bool)
 	// Notify the HostProvider of a successful connection.
 	Connected()
+	// Get all servers resolved
+	GetServer() []string
 }
 
 // ConnectWithDialer establishes a new connection to a pool of zookeeper servers
@@ -373,9 +375,11 @@ func (c *Conn) connect() error {
 		c.setState(StateConnecting)
 
 		if retryStart {
+			c.logger.Printf("there is no available server: %v", c.hostProvider.GetServer())
 			c.flushUnsentRequests(ErrNoServer)
 			select {
 			case <-time.After(time.Second):
+				continue
 				// pass
 			case <-c.shouldQuit:
 				c.setState(StateDisconnected)
