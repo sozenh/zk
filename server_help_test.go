@@ -102,7 +102,7 @@ func StartTestCluster(t *testing.T, size int, stdout, stderr io.Writer) (*TestCl
 		if err := srv.Start(); err != nil {
 			return nil, err
 		}
-
+		cfg.AuthProvider = "org.apache.zookeeper.server.auth.SASLAuthenticationProvider"
 		cluster.Servers = append(cluster.Servers, TestServer{
 			Path:   srvPath,
 			Port:   cfg.ClientPort,

@@ -93,6 +93,7 @@ type ServerConfig struct {
 	AutoPurgeSnapRetainCount int    // Number of snapshots to retain in dataDir
 	AutoPurgePurgeInterval   int    // Purge task internal in hours (0 to disable auto purge)
 	Servers                  []ServerConfigServer
+	AuthProvider             string
 }
 
 func (sc ServerConfig) Marshall(w io.Writer) error {
