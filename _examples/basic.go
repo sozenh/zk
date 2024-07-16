@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/go-zookeeper/zk"
+	"github.com/sozenh/zk"
 )
 
 var (
