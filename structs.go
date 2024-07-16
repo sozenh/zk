@@ -249,6 +249,14 @@ type setSaslRequest struct {
 	Token string
 }
 
+type setSaslResponse struct {
+	Nonce     string
+	Realm     string
+	Charset   string
+	Algorithm string
+	RspAuth   string
+}
+
 type setWatchesRequest struct {
 	RelativeZxid int64
 	DataWatches  []string

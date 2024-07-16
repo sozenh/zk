@@ -17,14 +17,6 @@ const (
 	zkSaslAuthConfQop = "auth-conf"
 )
 
-type setSaslResponse struct {
-	Nonce     string
-	Realm     string
-	Charset   string
-	Algorithm string
-	RspAuth   string
-}
-
 func getHexMd5(s string) string {
 	bs := []byte(s)
 	hash := ""
@@ -50,7 +42,7 @@ func rmDoubleQuote(s string) string {
 	return s[1 : leng-1]
 }
 
-func (r setSaslResponse) getUserPassword(auth []byte) (string, string) {
+func getUserPassword(auth []byte) (string, string) {
 	userPassword := string(auth)
 
 	split := strings.SplitN(userPassword, ":", 2)
@@ -58,62 +50,65 @@ func (r setSaslResponse) getUserPassword(auth []byte) (string, string) {
 	return split[0], split[1]
 }
 
-func (r setSaslResponse) genA1(user, password, cnonce string) string {
-	hexStr := fmt.Sprintf("%s:%s:%s", user, r.Realm, password)
-	hash := getMd5(hexStr)
-	keyHash := fmt.Sprintf("%s:%s:%s", hash, r.Nonce, cnonce)
+type SASL struct {
+	Nc     int
+	Qop    string
+	Realm  string
+	Nonce  string
+	CNonce string
+
+	User     string
+	Password string
+}
+
+func (r SASL) genA1() string {
+	hexStr := fmt.Sprintf("%s:%s:%s", r.User, r.Realm, r.Password)
+	keyHash := fmt.Sprintf("%s:%s:%s", getMd5(hexStr), r.Nonce, r.CNonce)
+
 	return getHexMd5(keyHash)
 }
 
-func (r setSaslResponse) genChallenge(user, password, cnonce, qop string, nc int) string {
+func (r SASL) genChallenge() string {
+	a1 := r.genA1()
+	a2 := getHexMd5(fmt.Sprintf("%s:%s", "AUTHENTICATE", zkSaslMd5Uri))
 
-	rawA2 := fmt.Sprintf("%s:%s", "AUTHENTICATE", zkSaslMd5Uri)
-	a2 := getHexMd5(rawA2)
-
-	a1 := r.genA1(user, password, cnonce)
-
-	rv := fmt.Sprintf("%s:%s:%08x:%s:%s:%s", a1, r.Nonce, nc, cnonce, qop, a2)
+	rv := fmt.Sprintf("%s:%s:%08x:%s:%s:%s", a1, r.Nonce, r.Nc, r.CNonce, r.Qop, a2)
 
 	return getHexMd5(rv)
 }
 
 // GenSaslChallenge refers to RFC2831 to generate a md5-digest challenge.
-func (r setSaslResponse) GenSaslChallenge(auth []byte, cnonce string) (string, error) {
-	user, password := r.getUserPassword(auth)
-	if user == "" || password == "" {
+func (r SASL) GenSaslChallenge() (string, error) {
+	if r.User == "" || r.Password == "" {
 		return "", errors.New("found invalid user&password")
 	}
 
-	ch := make(map[string]string, 20)
-
-	ch["digest-uri"] = doubleQuote(zkSaslMd5Uri)
-
-	// Only "auth" qop supports so far.
-	qop := zkSaslAuthQop
-	ch["qop"] = qop
-
-	nc := 1
-	ch["nc"] = fmt.Sprintf("%08x", nc)
-
-	ch["realm"] = doubleQuote(r.Realm)
-	ch["username"] = doubleQuote(user)
+	r.Nc = 1
+	r.Qop = zkSaslAuthQop // Only "auth" qop supports so far.
 
 	// for unittest.
-	if cnonce == "" {
+	if r.CNonce == "" {
 		n, err := rand.Int(rand.Reader, big.NewInt(65535))
 		if err != nil {
 			return "", err
 		}
-		cnonce = fmt.Sprintf("%s", n)
+		r.CNonce = fmt.Sprintf("%s", n)
 	}
-	ch["cnonce"] = doubleQuote(cnonce)
-	ch["nonce"] = doubleQuote(r.Nonce)
 
-	ch["response"] = r.genChallenge(user, password, cnonce, qop, nc)
+	fileds := map[string]string{
+		"qop":        r.Qop,
+		"response":   r.genChallenge(),
+		"username":   doubleQuote(r.User),
+		"realm":      doubleQuote(r.Realm),
+		"nonce":      doubleQuote(r.Nonce),
+		"cnonce":     doubleQuote(r.CNonce),
+		"digest-uri": doubleQuote(zkSaslMd5Uri),
+		"nc":         fmt.Sprintf("%08x", r.Nc),
+	}
 
-	items := make([]string, 0, len(ch))
+	items := make([]string, 0, len(fileds))
 
-	for k, v := range ch {
+	for k, v := range fileds {
 		items = append(items, fmt.Sprintf("%s=%s", k, v))
 	}
 
@@ -121,12 +116,14 @@ func (r setSaslResponse) GenSaslChallenge(auth []byte, cnonce string) (string, e
 }
 
 // Decode decodes a md5-digest ZK SASL response.
-func (r *setSaslResponse) Decode(buf []byte) (int, error) {
+func (r setSaslResponse) Decode(buf []byte) (int, error) {
 
 	// Discard the first 4 bytes, they are not used here.
 	// According to RFC, the payload is inform of k1=v,k2=v, some of the values maybe enclosure with double quote(").
 	payload := string(buf[4:])
 
+	fmt.Println(payload)
+	fmt.Println(string(buf))
 	splitPayload := strings.Split(payload, ",")
 
 	if len(splitPayload) == 0 {

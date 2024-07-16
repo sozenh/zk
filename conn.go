@@ -976,7 +976,7 @@ func (c *Conn) request(opcode int32, req interface{}, res interface{}, recvFunc 
 	}
 }
 
-func (c *Conn) doAddSaslAuth(auth []byte) (int64, error) {
+func (c *Conn) SetSasl(user, password string) (int64, error) {
 	// step 1 Ask for server informations.
 	resp := setSaslResponse{}
 	zxid, err := c.request(opSetSasl, &setSaslRequest{}, &resp, nil)
@@ -984,7 +984,13 @@ func (c *Conn) doAddSaslAuth(auth []byte) (int64, error) {
 		return zxid, err
 	}
 
-	challenge, err := resp.GenSaslChallenge(auth, "")
+	sasl := SASL{
+		User:     user,
+		Password: password,
+		Realm:    resp.Realm,
+		Nonce:    resp.Nonce,
+	}
+	challenge, err := sasl.GenSaslChallenge()
 
 	if err != nil {
 		return 0, err
@@ -996,12 +1002,8 @@ func (c *Conn) doAddSaslAuth(auth []byte) (int64, error) {
 
 // AddAuth adds an authentication config to the connection.
 func (c *Conn) AddAuth(scheme string, auth []byte) error {
-	var err error
-	if scheme == "sasl" {
-		_, err = c.doAddSaslAuth(auth)
-	} else {
-		_, err = c.request(opSetAuth, &setAuthRequest{Type: 0, Scheme: scheme, Auth: auth}, &setAuthResponse{}, nil)
-	}
+	_, err := c.request(opSetAuth, &setAuthRequest{Type: 0, Scheme: scheme, Auth: auth}, &setAuthResponse{}, nil)
+
 	if err != nil {
 		return err
 	}
@@ -1418,7 +1420,15 @@ func resendZkSasl(ctx context.Context, c *Conn, auth []byte) (bool, error) {
 	if err != nil {
 		return shouldContinue, err
 	}
-	challenge, err := resp.GenSaslChallenge(auth, "")
+
+	user, password := getUserPassword(auth)
+	sasl := SASL{
+		User:     user,
+		Password: password,
+		Realm:    resp.Realm,
+		Nonce:    resp.Nonce,
+	}
+	challenge, err := sasl.GenSaslChallenge()
 
 	if err != nil {
 		return true, err

@@ -9,9 +9,9 @@ import (
 )
 
 var (
-	serverAddr = flag.String("address", "127.0.0.1:2181", "zookeeper server address")
-	username   = flag.String("username", "", "username")
-	password   = flag.String("password", "", "password")
+	serverAddr = flag.String("address", "10.10.40.131:25698", "zookeeper server address")
+	username   = flag.String("username", "admin", "username")
+	password   = flag.String("password", "password", "password")
 )
 
 func ConnectZkExample() {
@@ -64,9 +64,7 @@ func ConnectZkWithSaslExample() {
 	}
 	defer c.Close()
 
-	authData := fmt.Sprintf("%s:%s", *username, *password)
-	fmt.Printf("auth data: %v\n", authData)
-	_ = c.AddAuth("sasl", []byte(authData))
+	_, _ = c.SetSasl(*username, *password)
 
 	testPathPrefix := "/test"
 	for i := 0; i < 10; i++ {
@@ -77,7 +75,7 @@ func ConnectZkWithSaslExample() {
 		// check
 		exist, stat, err := c.Exists(testPath)
 		if err != nil {
-			panic(fmt.Sprintf("check path %v exists failed", testPath))
+			panic(fmt.Sprintf("check path %v exists failed %v", testPath, err))
 		}
 
 		// set
